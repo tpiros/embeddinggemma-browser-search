@@ -5,7 +5,7 @@ import * as store from './app/store.js';
 import { VectorIndex } from './app/vector-index.js';
 import { detectKind, ingestFile, ingestNote } from './app/ingest.js';
 import { VoiceRecorder } from './app/recorder.js';
-import { downloadMB, isModelCached, loadSettings, saveSettings } from './app/settings.js';
+import { downloadMB, isModelCached, likelyDevice, loadSettings, saveSettings } from './app/settings.js';
 import { fetchSampleFiles, SAMPLE_NOTES } from './app/samples.js';
 
 // ---------- tiny DOM helpers ----------
@@ -52,6 +52,8 @@ const state = {
   /** @type {Promise<void> | null} resolves when the model is ready */
   model: null,
   ready: false,
+  /** true while model files are coming from the network rather than the cache */
+  downloading: false,
 };
 
 const previewUrls = new Map();
@@ -78,7 +80,8 @@ $('#notice-dismiss').addEventListener('click', () => ($('#notice').hidden = true
 let lastDownload = 0;
 embedder.addEventListener('progress', ({ detail }) => {
   if (detail.kind === 'download') {
-    // Only show the bar for real downloads; cached loads finish in a blink.
+    // Cached loads also report progress; only real downloads get the bar.
+    if (!state.downloading) return setStatus('Loading model');
     const now = performance.now();
     if (now - lastDownload < 100 && detail.progress < 100) return;
     lastDownload = now;
@@ -93,13 +96,15 @@ embedder.addEventListener('progress', ({ detail }) => {
 
 // ---------- model ----------
 
+/** Encoder checkboxes with their download sizes. `values` holds { vision, audio, device }; returns a refresh function. */
 function encoderRows(container, values, onChange) {
   const total = h('div', { class: 'encoder-total' });
+  const sizes = {};
   const rows = [
-    ['text', 'Text', 'Notes and typed searches', DOWNLOAD_MB.text, true],
-    ['vision', 'Images and video', 'Photos, video frames, image search', DOWNLOAD_MB.vision, false],
-    ['audio', 'Audio', 'Sound files, soundtracks, voice search', DOWNLOAD_MB.audio, false],
-  ].map(([key, label, detail, mb, locked]) =>
+    ['text', 'Text', 'Notes and typed searches', true],
+    ['vision', 'Images and video', 'Photos, video frames, image search', false],
+    ['audio', 'Audio', 'Sound files, soundtracks, voice search', false],
+  ].map(([key, label, detail, locked]) =>
     h(
       'label',
       { class: 'encoder', 'data-locked': locked ? '' : null },
@@ -115,19 +120,29 @@ function encoderRows(container, values, onChange) {
         },
       }),
       h('span', {}, label, h('small', {}, detail)),
-      h('span', { class: 'size' }, `${mb} MB`),
+      (sizes[key] = h('span', { class: 'size' })),
     ),
   );
-  const update = () => (total.replaceChildren(h('span', {}, 'Download'), h('span', {}, `${downloadMB(values)} MB`)));
+  const update = () => {
+    const mb = DOWNLOAD_MB[likelyDevice(values.device)];
+    for (const [key, el] of Object.entries(sizes)) el.textContent = `${mb[key]} MB`;
+    total.replaceChildren(h('span', {}, 'Download'), h('span', {}, `${downloadMB(values)} MB`));
+  };
   update();
   container.replaceChildren(...rows, total);
   return update;
 }
 
-function showSetup() {
-  const choice = { vision: settings.vision, audio: settings.audio };
+/** The first-run panel, or after a failed load, the retry panel. */
+function showSetup({ failed = false } = {}) {
+  const choice = { vision: settings.vision, audio: settings.audio, device: settings.device };
   const button = $('#setup-download');
-  const label = () => (button.textContent = `Download model (${downloadMB(choice)} MB)`);
+  $('#setup-title').textContent = failed ? 'The model didn’t load' : 'Download the model to start';
+  $('#setup-text').textContent = failed
+    ? 'Check the message above, then try again. Files you already downloaded stay cached.'
+    : 'EmbeddingGemma 2 runs in this tab. It downloads once, then works offline. Pick the kinds of files you want to search. You can change this later.';
+  const label = () =>
+    (button.textContent = failed ? 'Try again' : `Download model (${downloadMB(choice)} MB)`);
   encoderRows($('#setup-encoders'), choice, label);
   label();
   button.onclick = () => {
@@ -137,7 +152,7 @@ function showSetup() {
     loadModel();
   };
   $('#setup').hidden = false;
-  setStatus('Model not downloaded', 'idle');
+  if (!failed) setStatus('Model not downloaded', 'idle');
 }
 
 function loadModel() {
@@ -145,8 +160,10 @@ function loadModel() {
   $('#loader-label').textContent = 'Downloading model';
   state.model = (async () => {
     try {
+      state.downloading = !(await isModelCached(settings));
       const info = await embedder.load({ vision: settings.vision, audio: settings.audio, device: settings.device });
       $('#loader').hidden = true;
+      state.downloading = false;
       if (info.fallbackReason) notify(`${info.fallbackReason} Running on WASM instead, which is slower.`);
       state.ready = true;
       setStatus(`Ready on ${info.device === 'webgpu' ? 'WebGPU' : 'WASM'}`, 'ready');
@@ -155,8 +172,9 @@ function loadModel() {
       $('#loader').hidden = true;
       setStatus('Model failed to load', 'error');
       const offline = !navigator.onLine ? ' You appear to be offline, and the model is not cached yet.' : '';
-      notify(`The model could not load: ${error.message}.${offline}`, 'error');
-      showSetup();
+      state.downloading = false;
+      notify(`The model could not load: ${error.message.replace(/\.$/, '')}.${offline}`, 'error');
+      showSetup({ failed: true });
       throw error;
     }
   })();
@@ -615,6 +633,13 @@ function renderSettings() {
 
   const pending = { vision: settings.vision, audio: settings.audio, device: settings.device };
   const showApply = () => {
+    if (!state.model) {
+      // Nothing loaded yet: just remember the choice for the setup panel.
+      Object.assign(settings, pending);
+      saveSettings(settings);
+      showSetup();
+      return;
+    }
     const info = embedder.info;
     const changed =
       !info ||
@@ -624,7 +649,7 @@ function renderSettings() {
     $('#apply-row').hidden = !changed || !state.model;
     $('#apply-text').textContent = `The model reloads with your changes. Download if not cached: up to ${downloadMB(pending)} MB.`;
   };
-  encoderRows($('#settings-encoders'), pending, showApply);
+  const refreshSizes = encoderRows($('#settings-encoders'), pending, showApply);
 
   const webgpu = 'gpu' in navigator;
   radioGroup(
@@ -638,14 +663,15 @@ function renderSettings() {
     settings.device,
     (device) => {
       pending.device = device;
+      refreshSizes();
       showApply();
     },
   );
   $('#device-hint').textContent = !webgpu
     ? 'This browser has no WebGPU, so the model runs on WASM (CPU).'
     : embedder.info
-      ? `Running on ${embedder.info.device === 'webgpu' ? 'WebGPU' : 'WASM'}. WebGPU is much faster; WASM works everywhere.`
-      : 'WebGPU is much faster; WASM works everywhere.';
+      ? `Running on ${embedder.info.device === 'webgpu' ? 'WebGPU' : 'WASM'}. WASM works everywhere but is much slower, and needs 16-bit weights, a separate and larger download.`
+      : 'WASM works everywhere but is much slower, and needs 16-bit weights, a separate and larger download.';
 
   $('#apply-model').onclick = () => {
     Object.assign(settings, pending);

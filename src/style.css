@@ -738,12 +738,16 @@ button:disabled {
 }
 
 .thumb.text p {
+  height: 100%;
+  overflow: hidden;
   font-size: 0.875rem;
   line-height: 1.45;
-  display: -webkit-box;
-  -webkit-line-clamp: 6;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  /* Fade out rather than clamp, so it fits whatever height the card ends up. */
+  mask-image: linear-gradient(to bottom, #000 65%, transparent);
+}
+
+.grid.ranked .thumb.text {
+  padding-top: 44px;
 }
 
 .thumb .badge {
@@ -1115,6 +1119,8 @@ dialog::backdrop {
 
 .viewer-media .waveform {
   width: 100%;
+  height: 160px;
+  object-fit: fill;
   border-radius: var(--radius-m);
   background: color-mix(in oklab, var(--audio) 7%, var(--surface));
   padding: 16px;

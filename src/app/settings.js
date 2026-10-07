@@ -1,6 +1,6 @@
 // Per-browser preferences. localStorage can be unavailable (private mode, blocked storage), so every
 // access is guarded and the defaults always work.
-import { DIMENSIONS, DOWNLOAD_MB, MODEL_ID } from '../embed/config.js';
+import { DIMENSIONS, DOWNLOAD_MB, DTYPE, DTYPE_SUFFIX, MODEL_ID } from '../embed/config.js';
 
 const KEY = 'gemma-search:settings';
 const DEFAULTS = { dim: 768, vision: true, audio: true, device: 'auto' };
@@ -25,20 +25,26 @@ export function saveSettings(settings) {
   }
 }
 
-export const downloadMB = ({ vision, audio }) =>
-  DOWNLOAD_MB.text + (vision ? DOWNLOAD_MB.vision : 0) + (audio ? DOWNLOAD_MB.audio : 0);
+/** The backend a device setting will most likely use. The worker makes the final call. */
+export const likelyDevice = (device) => (device === 'auto' ? ('gpu' in navigator ? 'webgpu' : 'wasm') : device);
 
-/** Whether the model files for these encoders are already in Transformers.js's browser cache. */
-export async function isModelCached({ vision, audio }) {
+export function downloadMB({ vision, audio, device }) {
+  const mb = DOWNLOAD_MB[likelyDevice(device)];
+  return mb.text + (vision ? mb.vision : 0) + (audio ? mb.audio : 0);
+}
+
+/** Whether the model files for these encoders and device are already in Transformers.js's browser cache. */
+export async function isModelCached({ vision, audio, device }) {
   try {
     if (!('caches' in self)) return false;
     const cache = await caches.open('transformers-cache');
     const urls = (await cache.keys()).map((r) => r.url).filter((u) => u.includes(MODEL_ID));
-    const has = (file) => urls.some((u) => u.endsWith(`/onnx/${file}`));
+    const dtype = DTYPE[likelyDevice(device)];
+    const has = (name, type) => urls.some((u) => u.endsWith(`/onnx/${name}${DTYPE_SUFFIX[type]}.onnx_data`));
     return (
-      has('model_q4.onnx_data') &&
-      (!vision || has('vision_encoder_q4.onnx_data')) &&
-      (!audio || has('audio_encoder_quantized.onnx_data'))
+      has('model', dtype.model) &&
+      (!vision || has('vision_encoder', dtype.vision_encoder)) &&
+      (!audio || has('audio_encoder', dtype.audio_encoder))
     );
   } catch {
     return false;

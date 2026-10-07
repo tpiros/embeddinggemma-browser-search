@@ -12,6 +12,7 @@ import ortMjs from 'onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs?url';
 import ortWasm from 'onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm?url';
 import {
   AUDIO_CHUNK_SECONDS,
+  BATCH_BUDGET,
   DIM,
   DTYPE,
   MODEL_ID,
@@ -49,9 +50,10 @@ async function loadOn(device, { vision, audio }) {
   const config = await AutoConfig.from_pretrained(MODEL_ID);
   if (!vision) config.vision_config = null;
   if (!audio) config.audio_config = null;
-  const dtype = { model: DTYPE.model };
-  if (vision) dtype.vision_encoder = DTYPE.vision_encoder;
-  if (audio) dtype.audio_encoder = DTYPE.audio_encoder;
+  const { model: text, vision_encoder, audio_encoder } = DTYPE[device];
+  const dtype = { model: text };
+  if (vision) dtype.vision_encoder = vision_encoder;
+  if (audio) dtype.audio_encoder = audio_encoder;
 
   const progress_callback = (info) => {
     if (info.status === 'progress_total') {
@@ -119,7 +121,7 @@ async function run(...inputs) {
 }
 
 /**
- * Packs items into batches under the WebGPU token budget. A batch pads to its longest item,
+ * Packs items into batches under the device's token budget. A batch pads to its longest item,
  * so its cost is count × max(cost).
  */
 function pack(items, cost) {
@@ -129,7 +131,7 @@ function pack(items, cost) {
   for (const item of items) {
     const c = cost(item);
     const nextMax = Math.max(max, c);
-    if (batch.length && (batch.length + 1) * nextMax > TOKENS.batchBudget) {
+    if (batch.length && (batch.length + 1) * nextMax > BATCH_BUDGET[state.device]) {
       batches.push(batch);
       batch = [];
       max = 0;
