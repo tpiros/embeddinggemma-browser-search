@@ -2,6 +2,13 @@
 
 Search your images, audio, video and notes with [EmbeddingGemma 2](https://huggingface.co/onnx-community/embeddinggemma-2-ONNX), entirely in the browser. One model puts every kind of file in the same 768-dimensional space. A typed query can find a photo, and a voice clip can find a video. Nothing leaves the device, and there is no backend.
 
+The write-up, with interactive figures for embeddings, token budgets and Matryoshka truncation, is at [tpiros.dev/blog/embeddinggemma-2-in-the-browser](https://tpiros.dev/blog/embeddinggemma-2-in-the-browser).
+
+## Requirements
+
+- Node.js 20.19+ or 22.12+ to build (Vite 8's requirement).
+- A browser with WebGPU for the fast path (Chrome or Edge 113+). Others fall back to WASM, which works but is much slower and downloads about 1.2 GB of fp16 weights instead of 624 MB. See [NOTES.md](NOTES.md).
+
 ## Run it
 
 ```sh

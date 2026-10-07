@@ -1,3 +1,8 @@
+# Dependencies and build output
+node_modules
+dist
+dist-ssr
+
 # Logs
 logs
 *.log
@@ -7,12 +12,20 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Environment files and secrets
+.env
+.env.*
+!.env.example
 *.local
+*.pem
+*.key
+*.p12
 
-# Editor directories and files
+# Deploy tool state
+.vercel
+.netlify
+
+# Editors and OS
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -23,8 +36,9 @@ dist-ssr
 *.sln
 *.sw?
 
-# Local test media (large)
-test-media
-
 # Claude Code local state
 .claude/
+
+# Large local test media and article screenshots
+test-media
+article-shots

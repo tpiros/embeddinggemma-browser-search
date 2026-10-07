@@ -1,5 +1,5 @@
 {
-  "name": "gemma",
+  "name": "embeddinggemma-browser-search",
   "version": "0.0.0",
   "private": true,
   "type": "module",
