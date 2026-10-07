@@ -32,6 +32,5 @@ The first visit asks you to download the model: about 625 MB with every encoder,
 | `src/app/ingest.js` | File to item and vectors, with thumbnails and waveforms. |
 | `src/main.js` | UI. |
 | `src/sw.js` | App-shell service worker, with its file list generated at build time. |
-| `smoke.html` | Dev-only checks: `?test=text`, `?test=multimodal`, `?test=api` (add `&device=wasm` to skip WebGPU). |
 
 See [NOTES.md](NOTES.md) for measured results and where the build differs from the brief.

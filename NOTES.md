@@ -29,7 +29,7 @@ GatherBlockQuantized(1) node with name '/model/embed_tokens/Gather_Quant'
 
 q8 fails the same way (`node_embedding_Quant` in the vision encoder). Checking the graph files shows that every quantized text and vision variant (`_q4`, `_q4f16`, `_quantized`) contains `GatherBlockQuantized`. The fp32 and fp16 graphs don't, and no audio encoder variant does.
 
-**What the app does:** WASM uses `{ model: fp16, vision_encoder: fp16, audio_encoder: q8 }`, which is about 1.2 GB against 624 MB for WebGPU. Batches are capped at 300 tokens, one image at a time, because a 9-image fp16 batch ran out of wasm memory (`OrtRun() ERROR_CODE: 6, std::bad_alloc`). With that, `smoke.html?test=api&device=wasm` passes, and its scores are within 0.01 of WebGPU:
+**What the app does:** WASM uses `{ model: fp16, vision_encoder: fp16, audio_encoder: q8 }`, which is about 1.2 GB against 624 MB for WebGPU. Batches are capped at 300 tokens, one image at a time, because a 9-image fp16 batch ran out of wasm memory (`OrtRun() ERROR_CODE: 6, std::bad_alloc`). With that, the card's image, audio and video example passes on WASM too, with scores within 0.01 of WebGPU:
 
 |       | cats  | speech | turtle |
 | ----- | ----- | ------ | ------ |
@@ -37,7 +37,7 @@ q8 fails the same way (`node_embedding_Quant` in the vision encoder). Checking t
 | audio | 0.499 | 0.774  | 0.480  |
 | video | 0.498 | 0.491  | 0.728  |
 
-It is slow: the full smoke run took 403 s on WASM against 26 s on WebGPU. Settings shows the larger WASM download size, and the setup screen shows it when WebGPU is missing.
+It is slow: loading the model and embedding the same set of test files took 403 s on WASM against 26 s on WebGPU. Settings shows the larger WASM download size, and the setup screen shows it when WebGPU is missing.
 
 ## Deviations from the brief
 
