@@ -19,7 +19,7 @@ export async function runMultimodalSmoke({ device, log, media }) {
   const queryEmbeddings = await embed(queries);
 
   const image = await RawImage.fromBlob(media.image);
-  const frames = media.video.frames.map(
+  const frames = media.video.segments[0].frames.map(
     ({ data, width, height, timestamp }) => new RawVideoFrame(new RawImage(data, width, height, 4), timestamp),
   );
   const video = new RawVideo(frames, media.video.duration);

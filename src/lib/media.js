@@ -37,13 +37,16 @@ export async function resampleToMono(buffer) {
 }
 
 /**
- * Samples frames from a video at `fps`, keeping at most `maxFrames` spread uniformly over the clip.
- * Frames are scaled so the longer side is at most `maxSide` (the processor resizes anyway).
+ * Samples a video into segments of `segmentSeconds`, each with frames at `fps` subsampled to at most
+ * `maxFrames`. Frames are scaled so the longer side is at most `maxSide` (the processor resizes anyway).
+ * Also captures a small poster frame.
  * @param {Blob} blob
- * @param {{ fps?: number, maxFrames?: number, maxSide?: number }} [options]
- * @returns {Promise<{ frames: { data: Uint8ClampedArray, width: number, height: number, timestamp: number }[], duration: number, width: number, height: number }>}
+ * @param {{ fps?: number, segmentSeconds?: number, maxFrames?: number, maxSegments?: number, maxSide?: number }} [options]
  */
-export async function decodeVideo(blob, { fps = 1, maxFrames = 16, maxSide = 768 } = {}) {
+export async function decodeVideo(
+  blob,
+  { fps = 1, segmentSeconds = 60, maxFrames = 16, maxSegments = 20, maxSide = 768 } = {},
+) {
   const url = URL.createObjectURL(blob);
   const video = document.createElement('video');
   video.muted = true;
@@ -58,20 +61,29 @@ export async function decodeVideo(blob, { fps = 1, maxFrames = 16, maxSide = 768
     const { duration, videoWidth, videoHeight } = video;
     if (!Number.isFinite(duration) || duration <= 0) throw new Error('Video has no readable duration');
 
-    const times = sampleTimes(duration, fps, maxFrames);
     const scale = Math.min(1, maxSide / Math.max(videoWidth, videoHeight));
     const width = Math.max(1, Math.round(videoWidth * scale));
     const height = Math.max(1, Math.round(videoHeight * scale));
     const canvas = new OffscreenCanvas(width, height);
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-    const frames = [];
-    for (const t of times) {
-      await seek(video, t);
-      ctx.drawImage(video, 0, 0, width, height);
-      frames.push({ data: ctx.getImageData(0, 0, width, height).data, width, height, timestamp: t });
+    const segments = [];
+    const count = Math.min(maxSegments, Math.ceil(duration / segmentSeconds));
+    for (let s = 0; s < count; s++) {
+      const start = s * segmentSeconds;
+      const end = Math.min(duration, start + segmentSeconds);
+      const frames = [];
+      for (const t of sampleTimes(start, end, fps, maxFrames)) {
+        await seek(video, t);
+        ctx.drawImage(video, 0, 0, width, height);
+        frames.push({ data: ctx.getImageData(0, 0, width, height).data, width, height, timestamp: t });
+      }
+      segments.push({ start, end, frames });
     }
-    return { frames, duration, width: videoWidth, height: videoHeight };
+
+    await seek(video, Math.min(1, duration / 2));
+    const poster = await drawThumbnail(video, videoWidth, videoHeight);
+    return { segments, duration, width: videoWidth, height: videoHeight, poster };
   } finally {
     video.removeAttribute('src');
     video.load();
@@ -79,14 +91,25 @@ export async function decodeVideo(blob, { fps = 1, maxFrames = 16, maxSide = 768
   }
 }
 
-/** Times at `fps`, subsampled uniformly to `maxFrames` (same rule as the processor's `np.linspace`). */
-function sampleTimes(duration, fps, maxFrames) {
+/** Times in [start, end) at `fps`, subsampled uniformly to `maxFrames` (as the processor's `np.linspace`). */
+function sampleTimes(start, end, fps, maxFrames) {
   const all = [];
-  for (let t = 0; t < duration; t += 1 / fps) all.push(t);
-  if (all.length === 0) all.push(0);
+  for (let t = start; t < end; t += 1 / fps) all.push(t);
+  if (all.length === 0) all.push(start);
   if (all.length <= maxFrames) return all;
   const step = (all.length - 1) / (maxFrames - 1);
   return Array.from({ length: maxFrames }, (_, i) => all[Math.round(i * step)]);
+}
+
+/**
+ * Draws a source (image, bitmap, video) into a JPEG thumbnail whose longer side is `size`.
+ * @returns {Promise<Blob>}
+ */
+export async function drawThumbnail(source, sourceWidth, sourceHeight, size = 320) {
+  const scale = Math.min(1, size / Math.max(sourceWidth, sourceHeight));
+  const canvas = new OffscreenCanvas(Math.max(1, Math.round(sourceWidth * scale)), Math.max(1, Math.round(sourceHeight * scale)));
+  canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height);
+  return canvas.convertToBlob({ type: 'image/jpeg', quality: 0.82 });
 }
 
 function seek(video, time) {
