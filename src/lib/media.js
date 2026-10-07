@@ -67,11 +67,13 @@ export async function decodeVideo(
     const canvas = new OffscreenCanvas(width, height);
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
+    // Even segments of roughly `segmentSeconds`, so 61 s is one segment rather than 60 s + a 1 s sliver.
     const segments = [];
-    const count = Math.min(maxSegments, Math.ceil(duration / segmentSeconds));
+    const count = Math.min(maxSegments, Math.max(1, Math.round(duration / segmentSeconds)));
+    const length = duration / count;
     for (let s = 0; s < count; s++) {
-      const start = s * segmentSeconds;
-      const end = Math.min(duration, start + segmentSeconds);
+      const start = s * length;
+      const end = Math.min(duration, start + length);
       const frames = [];
       for (const t of sampleTimes(start, end, fps, maxFrames)) {
         await seek(video, t);

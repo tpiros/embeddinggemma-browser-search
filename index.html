@@ -2,12 +2,202 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>gemma</title>
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Search your images, audio, video and notes with EmbeddingGemma 2, entirely on your device." />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <title>Gemma Search</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div class="shell">
+      <header class="masthead">
+        <div class="brand">
+          <h1>Gemma Search</h1>
+          <p class="tagline">Images, sound, video and notes in one search, on your device.</p>
+        </div>
+        <div class="status" id="status" role="status" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="status-text">Starting</span>
+        </div>
+        <button class="icon-button" id="open-settings" type="button" aria-label="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></svg>
+        </button>
+      </header>
+
+      <div class="notice" id="notice" hidden>
+        <p id="notice-text"></p>
+        <button type="button" class="text-button" id="notice-dismiss">Dismiss</button>
+      </div>
+
+      <section class="setup" id="setup" hidden aria-labelledby="setup-title">
+        <h2 id="setup-title">Download the model to start</h2>
+        <p>
+          EmbeddingGemma 2 runs in this tab. It downloads once, then works offline. Pick the kinds of files you want to
+          search. You can change this later.
+        </p>
+        <fieldset class="encoder-list" id="setup-encoders">
+          <legend class="sr-only">Encoders</legend>
+        </fieldset>
+        <button class="primary" id="setup-download" type="button">Download model</button>
+      </section>
+
+      <div class="loader" id="loader" hidden>
+        <div class="loader-text"><span id="loader-label">Downloading model</span><span id="loader-pct"></span></div>
+        <div class="bar"><div class="bar-fill" id="loader-fill"></div></div>
+      </div>
+
+      <form class="query" id="query-form" autocomplete="off">
+        <div class="query-field">
+          <svg class="query-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
+          <div class="query-chip" id="query-chip" hidden>
+            <img id="query-chip-img" alt="" hidden />
+            <span id="query-chip-label"></span>
+            <button type="button" id="query-chip-clear" aria-label="Clear search">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" /></svg>
+            </button>
+          </div>
+          <input
+            id="query-input"
+            name="q"
+            type="search"
+            placeholder="Describe what you're looking for"
+            aria-label="Search your library"
+            enterkeyhint="search"
+          />
+        </div>
+        <label class="query-action" id="image-query-label" title="Search with an image">
+          <input type="file" id="image-query" accept="image/*" class="sr-only" />
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2.5" /><circle cx="9" cy="10" r="1.6" /><path d="m5 17 4.5-4.5 3 3 2.5-2.5L19 17" /></svg>
+          <span class="sr-only">Search with an image</span>
+        </label>
+        <button class="query-action" id="mic" type="button" aria-pressed="false" title="Search with your voice">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3.5" width="6" height="11" rx="3" /><path d="M6 11.5a6 6 0 0 0 12 0M12 17.5V21" /></svg>
+          <span class="mic-timer" id="mic-timer"></span>
+          <span class="sr-only" id="mic-label">Search with your voice</span>
+        </button>
+        <button class="primary query-submit" type="submit">Search</button>
+      </form>
+
+      <nav class="filters" id="filters" aria-label="Filter by kind">
+        <button type="button" data-kind="all" aria-pressed="true">Everything</button>
+        <button type="button" data-kind="text" aria-pressed="false"><i class="swatch text"></i>Notes</button>
+        <button type="button" data-kind="image" aria-pressed="false"><i class="swatch image"></i>Images</button>
+        <button type="button" data-kind="audio" aria-pressed="false"><i class="swatch audio"></i>Audio</button>
+        <button type="button" data-kind="video" aria-pressed="false"><i class="swatch video"></i>Video</button>
+      </nav>
+
+      <main>
+        <div class="section-head">
+          <h2 id="view-title">Library</h2>
+          <p id="view-meta"></p>
+          <div class="section-actions">
+            <button type="button" class="secondary" id="add-note">Write a note</button>
+            <label class="secondary" id="add-files-label">
+              Add files
+              <input type="file" id="add-files" multiple accept="image/*,audio/*,video/*,text/*,.md,.txt,.csv,.json" class="sr-only" />
+            </label>
+          </div>
+        </div>
+
+        <div class="empty" id="empty" hidden>
+          <svg class="empty-art" viewBox="0 0 160 120" aria-hidden="true">
+            <rect class="t" x="8" y="22" width="44" height="34" rx="6" />
+            <rect class="i" x="58" y="10" width="44" height="46" rx="6" />
+            <rect class="a" x="108" y="30" width="44" height="26" rx="6" />
+            <rect class="v" x="40" y="64" width="80" height="46" rx="6" />
+          </svg>
+          <h3>Your library is empty</h3>
+          <p>Drop images, audio, video or text files anywhere on this page. Or start with a sample set of 14 files and 3 notes.</p>
+          <button class="primary" id="load-samples" type="button">Load sample files</button>
+        </div>
+
+        <ol class="grid" id="grid"></ol>
+      </main>
+    </div>
+
+    <aside class="tray" id="tray" hidden aria-label="Adding files">
+      <div class="tray-head">
+        <h2 id="tray-title">Adding files</h2>
+        <button type="button" class="text-button" id="tray-close">Hide</button>
+      </div>
+      <ol id="tray-list"></ol>
+    </aside>
+
+    <div class="drop-overlay" id="drop-overlay" hidden>
+      <p>Drop to add to your library</p>
+    </div>
+
+    <dialog class="sheet" id="settings" aria-labelledby="settings-title">
+      <form method="dialog" class="sheet-body" id="settings-form">
+        <header class="sheet-head">
+          <h2 id="settings-title">Settings</h2>
+          <button class="icon-button" value="close" aria-label="Close settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" /></svg>
+          </button>
+        </header>
+
+        <fieldset>
+          <legend>Vector size</legend>
+          <p class="hint">Shorter vectors use less memory. Search quality holds up to 256, and drops off at 128.</p>
+          <div class="segmented" id="dim-options"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Encoders</legend>
+          <p class="hint">Text search is always on. Turning an encoder off skips its download. Files you already added stay searchable.</p>
+          <div class="encoder-list" id="settings-encoders"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Run on</legend>
+          <div class="segmented" id="device-options"></div>
+          <p class="hint" id="device-hint"></p>
+        </fieldset>
+
+        <div class="sheet-apply" id="apply-row" hidden>
+          <p id="apply-text"></p>
+          <button type="button" class="primary" id="apply-model">Reload model</button>
+        </div>
+
+        <fieldset>
+          <legend>Library</legend>
+          <p class="hint" id="library-stats"></p>
+          <button type="button" class="danger" id="clear-library">Delete all files</button>
+        </fieldset>
+      </form>
+    </dialog>
+
+    <dialog class="viewer" id="viewer" aria-labelledby="viewer-title">
+      <div class="viewer-body">
+        <header class="viewer-head">
+          <h2 id="viewer-title"></h2>
+          <button class="icon-button" id="viewer-close" type="button" aria-label="Close">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" /></svg>
+          </button>
+        </header>
+        <div class="viewer-media" id="viewer-media"></div>
+        <p class="viewer-meta" id="viewer-meta"></p>
+        <footer class="viewer-actions">
+          <button type="button" class="secondary" id="viewer-similar">Find similar</button>
+          <button type="button" class="danger" id="viewer-delete">Delete</button>
+        </footer>
+      </div>
+    </dialog>
+
+    <dialog class="viewer" id="note-dialog" aria-labelledby="note-title">
+      <form method="dialog" class="viewer-body note-form" id="note-form">
+        <header class="viewer-head">
+          <h2 id="note-title">Write a note</h2>
+        </header>
+        <label>Title <span class="optional">optional</span><input name="title" type="text" /></label>
+        <label>Note<textarea name="text" rows="8" required></textarea></label>
+        <footer class="viewer-actions">
+          <button type="submit" value="cancel" class="secondary" formnovalidate>Cancel</button>
+          <button type="submit" value="save" class="primary">Add note</button>
+        </footer>
+      </form>
+    </dialog>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
